@@ -1,31 +1,56 @@
-const mongoose=require('mongoose');
-const schema=mongoose.schema;
-const bcrypt=require('bcrypt')
-const userSchema=new mongoose.schema({
-    name:String,
-    email:{type:String,unique:true},
-    password:String,
-    role:{type:String,default:'sales_exec'}
-},{timestamps:true});
+import mongoose, { Document, Model } from "mongoose";
+import bcrypt from "bcrypt";
 
-userSchema.pre('save',async function  (next:any) {
-    try{
-        if(schema.isNew){
-            const salt=await bcrypt.genSalt(10)
-            const hashedPassword=await bcrypt.hash(schema.password,salt);
-            schema.password=hashedPassword;
-        }
-        next();
-    }catch(error){
-        next(error);
-    }
-})
+const { Schema } = mongoose;
 
-userSchema.methods.isValidPassword=async function (password:String) {
-    try{
-        return await bcrypt.compare(password,schema.password)
-    }catch(error){
-        throw error;
-    }
+export interface IUser extends Document {
+    userId: string;
+    email: string;
+    password: string;
+    active: boolean;
+    referralCode?: string;
+    referrer?: string | null;
+    emailToken?: string | null;
+    emailTokenExpires?: Date | null;
 }
-module.exports=mongoose.model("User",userSchema);
+
+export interface IUserModel extends Model<IUser> {
+    hashPassword(password: string): Promise<string>;
+    comparePassword(
+        inputPassword: string,
+        hashedPassword: string
+    ): Promise<boolean>;
+}
+
+const userSchema = new mongoose.Schema<IUser>(
+    {
+        userId: { type: String, unique: true, required: true },
+        email: { type: String, required: true, unique: true },
+        active: { type: Boolean, default: false },
+        password: { type: String, required: true },
+        referralCode: { type: String, unique: true },
+        referrer: { type: String, default: null },
+        emailToken: { type: String, default: null },
+        emailTokenExpires: { type: Date, default: null },
+    },
+    { timestamps: true }
+);
+
+
+userSchema.statics.hashPassword = async function (password: string) {
+    const salt = await bcrypt.genSalt(10);
+    return bcrypt.hash(password, salt);
+};
+
+userSchema.statics.comparePassword = async function (
+    inputPassword: string,
+    hashedPassword: string
+) {
+    return bcrypt.compare(inputPassword, hashedPassword);
+};
+
+
+const User = mongoose.model<IUser, IUserModel>("User", userSchema);
+
+export default User;
+
