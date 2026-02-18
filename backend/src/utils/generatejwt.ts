@@ -13,7 +13,7 @@ const options = {
   expiresIn: 3600,
 };
 
-async function generateJWT({ email, userId }: { email: string; userId: string }) {
+async function generateJWT(email: string, userId: string) {
   const payload = { email, id: userId };
 
   const token =jwt.sign(payload, JWT_SECRET, options);

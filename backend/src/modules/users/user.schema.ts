@@ -1,8 +1,6 @@
 import mongoose, { Document, Model } from "mongoose";
 import bcrypt from "bcrypt";
 
-const { Schema } = mongoose;
-
 export interface IUser extends Document {
     userId: string;
     email: string;
@@ -12,6 +10,9 @@ export interface IUser extends Document {
     referrer?: string | null;
     emailToken?: string | null;
     emailTokenExpires?: Date | null;
+    resetPasswordToken?: string | null;   // ✅ add
+    resetPasswordExpires?: Date | null;
+    accessToken: string | null;
 }
 
 export interface IUserModel extends Model<IUser> {
@@ -32,6 +33,7 @@ const userSchema = new mongoose.Schema<IUser>(
         referrer: { type: String, default: null },
         emailToken: { type: String, default: null },
         emailTokenExpires: { type: Date, default: null },
+        accessToken: { type: String, default: null }
     },
     { timestamps: true }
 );

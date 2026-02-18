@@ -5,6 +5,7 @@
      "target": "esnext",
      "module": "nodenext",
      "types": ["node"],
+     "typeRoots": ["./src/@types","./node_modules/@types"],
      "rewriteRelativeImportExtensions": true,
      "erasableSyntaxOnly": true,
      "verbatimModuleSyntax": true

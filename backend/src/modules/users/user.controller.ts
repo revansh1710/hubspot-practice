@@ -1,14 +1,12 @@
 import Joi from "joi";
 import dotenv from "dotenv";
 dotenv.config();
-
 import { v4 as uuidv4 } from "uuid";
 import { customAlphabet } from "nanoid";
-
-import generateJWT from "../../utils/generatejwt.ts";
-import { sendWelcomeMail } from "../../utils/mailer.ts";
+import generateJWT from '../../utils/generatejwt.ts'
+import { sendWelcomeMail, sendPasswordResetMail } from "../../utils/mailer.ts";
+import type { Request, Response } from 'express';
 import User from "./user.schema.ts";
-
 const CHARACTER_SET =
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
@@ -57,7 +55,7 @@ export const Signup = async (req: any, res: any) => {
     }
 
     // Hash password
-   const hashedPassword = await User.hashPassword(value.password);
+    const hashedPassword = await User.hashPassword(value.password);
 
 
     // Generate tokens
@@ -95,6 +93,209 @@ export const Signup = async (req: any, res: any) => {
     return res.status(500).json({
       error: true,
       message: "Internal server error",
+    });
+  }
+};
+
+export const Activate = async (req: Request, res: Response) => {
+  try {
+    const { email, code } = req.body;
+
+    if (!email || !code) {
+      return res.status(400).json({
+        error: true,
+        message: "Please provide email and code",
+      });
+    }
+
+    const user = await User.findOne({
+      email,
+      emailToken: code,
+      emailTokenExpires: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        error: true,
+        message: "Invalid or expired code",
+      });
+    }
+
+    if (user.active) {
+      return res.status(409).json({
+        error: true,
+        message: "Account already activated",
+      });
+    }
+
+    // ✅ Activate account
+    user.active = true;
+    user.emailToken = null;
+    user.emailTokenExpires = null;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Account activated successfully",
+    });
+  } catch (error: any) {
+    console.error("activation-error", error);
+
+    return res.status(500).json({
+      error: true,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const Login = async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        error: true,
+        message: "Cannot authorize user",
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        error: true,
+        message: "User not found",
+      });
+    }
+
+    if (!user.active) {
+      return res.status(403).json({
+        error: true,
+        message: "You must verify your email to activate your account",
+      });
+    }
+
+    const isValid = await User.comparePassword(password, user.password);
+
+    if (!isValid) {
+      return res.status(401).json({
+        error: true,
+        message: "Invalid credentials",
+      });
+    }
+
+    const token = await generateJWT(user.email, user.userId);
+
+    if (!token) {
+      return res.status(500).json({
+        error: true,
+        message: "Failed to generate token",
+      });
+    }
+    user.accessToken = token;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      token,
+    });
+  } catch (error: any) {
+    console.error("login-error:", error);
+
+    return res.status(500).json({
+      error: true,
+      message: "Internal server error",
+    });
+  }
+};
+
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body as { email: string };
+
+    if (!email) {
+      return res.status(400).json({
+        error: true,
+        message: "Email is required",
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    // Always return generic response (security best practice)
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message:
+          "If that email exists, a password reset code has been sent",
+      });
+    }
+
+    // 🔐 Generate OTP + expiry
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = new Date(Date.now() + 15 * 60 * 1000);
+
+    user.resetPasswordToken = code;
+    user.resetPasswordExpires = expiry;
+    await user.save();
+
+    // 📧 Send email
+    await sendPasswordResetMail({
+      to: user.email,
+      name: user.email,
+      code,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset email sent",
+    });
+  } catch (error) {
+    console.error("forgot-password-error", error);
+
+    return res.status(500).json({
+      error: true,
+      message: "Unable to process request",
+    });
+  }
+};
+
+export const logout = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        error: true,
+        message: "Unauthorized",
+      });
+    }
+
+    const { userId } = req.user;
+
+    const user = await User.findOne({ userId });
+
+    if (!user) {
+      return res.status(404).json({
+        error: true,
+        message: "User not found",
+      });
+    }
+
+    user.accessToken = null; // or "" depending on schema
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    console.error("logout-error", error);
+
+    return res.status(500).json({
+      error: true,
+      message: "Logout failed",
     });
   }
 };
